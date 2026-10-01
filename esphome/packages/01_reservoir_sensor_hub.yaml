@@ -1,0 +1,228 @@
+# Board 01 — Reservoir Sensor Hub, Unexpected Maker FeatherS3[D] (ESP32-S3).
+#
+# Pin map from Netlist_01_reservoir_sensor_hub_2026-09-19 + the FeatherS3[D]
+# pinout. H6 (16-pin) counts from RST, H5 (12-pin) from SDA; both are pinned
+# down by the power nets (H6.4 = GND, H6.16 = LDO2, H5.10 = 5V).
+#   I2C_SDA  H5.1  -> IO8     I2C_SCL  H5.2  -> IO9
+#   net TX   H6.14 -> IO44    (= A02YYUW pin 3, the sensor's RX/mode input)
+#   net RX   H6.15 -> IO43    (= A02YYUW pin 4, the sensor's TX output)
+#   DS18B20  H6.10 -> IO5     Flood S1 H6.9 -> IO6     Flood S2 H6.7 -> IO14
+#   LDO2 enable (sensor rail VCC) -> IO39, on the Feather itself
+#
+# NOTE the old 01_reservoir_sensor_hub.md (GPIO21/22/17/16/4/19/23) is from
+# the ESP32-DevKitC design and is stale. Don't use it.
+#
+# UART (review F6): the sensor's TX output lands on IO43, so the UART is
+# configured rx=IO43 / tx=IO44 through the S3 GPIO matrix. Continuity-check
+# H2.4 -> Feather "TX" pad before first power-up anyway.
+#
+# 2026-09-19 netlist: U2 (ADS1115) VDD moved to VCC (3.3 V) — fixes F5. That
+# also puts U2 on the LDO2-gated rail with the EZO, ultrasonic and DS18B20.
+#
+# LDO2 stays ON permanently. The flood pull-ups (R3/R4) are on VCC, so with
+# LDO2 off both flood inputs read LOW = "wet". Floods are ignored while off.
+#
+# Device file substitutions:
+#   tank_empty_mm  sensor face -> tank floor
+#   tank_full_mm   sensor face -> water surface at "100 %" (>= 30 mm: A02YYUW blind zone)
+
+esp32:
+  board: um_feathers3
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+
+switch:
+  - platform: gpio
+    id: sensor_power
+    name: "Sensor power (LDO2)"
+    pin: GPIO39
+    restore_mode: ALWAYS_ON
+    entity_category: diagnostic
+
+i2c:
+  sda: GPIO8
+  scl: GPIO9
+  frequency: 100kHz
+  scan: false   # runs before LDO2 is up; nothing would answer
+
+ads1115:
+  - address: 0x48
+
+uart:
+  id: uart_level
+  rx_pin: GPIO43
+  tx_pin: GPIO44
+  baud_rate: 9600
+
+one_wire:
+  - platform: gpio
+    pin: GPIO5
+
+# pH two-point calibration, stored on the device. Defaults are DFRobot's
+# library values (pH7 = 1.500 V, pH4 = 2.032 V); replace them with buffer
+# captures: probe in pH 7.00 buffer -> press "capture pH 7"; same for 4.00.
+number:
+  - platform: template
+    id: ph7_v
+    name: "pH cal voltage @ pH 7"
+    unit_of_measurement: "V"
+    entity_category: config
+    mode: box
+    min_value: 0
+    max_value: 3.3
+    step: 0.0001
+    optimistic: true
+    restore_value: true
+    initial_value: 1.500
+  - platform: template
+    id: ph4_v
+    name: "pH cal voltage @ pH 4"
+    unit_of_measurement: "V"
+    entity_category: config
+    mode: box
+    min_value: 0
+    max_value: 3.3
+    step: 0.0001
+    optimistic: true
+    restore_value: true
+    initial_value: 2.032
+
+button:
+  - platform: template
+    name: "Power-cycle sensors"
+    entity_category: config
+    on_press:
+      - switch.turn_off: sensor_power
+      - delay: 3s
+      - switch.turn_on: sensor_power
+  - platform: template
+    name: "pH cal: capture pH 7"
+    entity_category: config
+    on_press:
+      - number.set: { id: ph7_v, value: !lambda "return id(ph_voltage).state;" }
+  - platform: template
+    name: "pH cal: capture pH 4"
+    entity_category: config
+    on_press:
+      - number.set: { id: ph4_v, value: !lambda "return id(ph_voltage).state;" }
+
+sensor:
+  # pH: SEN0169-V2 -> DFR0504 isolator -> H1 -> ADS1115 AIN0. Signal is
+  # 0-3.0 V, so gain must be 4.096 (default 2.048 clips).
+  - platform: ads1115
+    id: ph_voltage
+    name: "pH probe voltage"
+    multiplexer: A0_GND
+    gain: 4.096
+    resolution: 16_BITS
+    update_interval: 5s
+    accuracy_decimals: 4
+    entity_category: diagnostic
+    filters:
+      - median:
+          window_size: 7
+          send_every: 6
+
+  - platform: template
+    id: ph
+    name: "Reservoir pH"
+    icon: mdi:ph
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: 30s
+    lambda: |-
+      float v = id(ph_voltage).state, v7 = id(ph7_v).state, v4 = id(ph4_v).state;
+      if (isnan(v) || fabsf(v7 - v4) < 0.05f) return NAN;
+      float p = 7.0f + (v - v7) * 3.0f / (v7 - v4);
+      return (p < 0.0f || p > 14.0f) ? NAN : p;
+
+  # EC: Atlas EZO-EC on the isolated carrier, I2C 0x64 (must be switched
+  # from UART to I2C mode once, per unit, before installing).
+  - platform: ezo
+    id: ec_ezo
+    name: "Reservoir EC"
+    address: 0x64
+    unit_of_measurement: "µS/cm"
+    icon: mdi:flash
+    accuracy_decimals: 0
+    state_class: measurement
+    update_interval: 30s
+
+  - platform: dallas_temp
+    id: water_temp
+    name: "Reservoir water temperature"
+    update_interval: 30s
+    on_value:
+      then:
+        - lambda: |-
+            if (!isnan(x)) id(ec_ezo).set_tempcomp_value(x);
+
+  # A02YYUW ultrasonic, distance in mm from the sensor face.
+  - platform: a02yyuw
+    id: level_distance
+    name: "Reservoir level distance"
+    uart_id: uart_level
+    entity_category: diagnostic
+    filters:
+      - median:
+          window_size: 9
+          send_every: 5
+      - throttle: 10s
+
+  - platform: template
+    name: "Reservoir level"
+    unit_of_measurement: "%"
+    icon: mdi:waves
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 15s
+    lambda: |-
+      float d = id(level_distance).state;
+      if (isnan(d)) return NAN;
+      float pct = (${tank_empty_mm} - d) * 100.0f / (${tank_empty_mm} - ${tank_full_mm});
+      return std::max(0.0f, std::min(100.0f, pct));
+
+binary_sensor:
+  # Bare-contact probes: dry = 10k pull-up high, wet = pulled to GND.
+  - platform: gpio
+    name: "Flood sensor 1"
+    device_class: moisture
+    pin:
+      number: GPIO6
+      inverted: true
+      mode: INPUT       # external 10k pull-up (R3)
+    filters:
+      - lambda: |-
+          if (!id(sensor_power).state) return {};
+          return x;
+      - delayed_on: 2s
+      - delayed_off: 10s
+  - platform: gpio
+    name: "Flood sensor 2"
+    device_class: moisture
+    pin:
+      number: GPIO14
+      inverted: true
+      mode: INPUT       # external 10k pull-up (R4)
+    filters:
+      - lambda: |-
+          if (!id(sensor_power).state) return {};
+          return x;
+      - delayed_on: 2s
+      - delayed_off: 10s
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      # EZO-EC: report EC only (not TDS/salinity/SG) so the value parses cleanly.
+      - delay: 5s
+      - lambda: |-
+          id(ec_ezo).send_custom("O,TDS,0");
+          id(ec_ezo).send_custom("O,S,0");
+          id(ec_ezo).send_custom("O,SG,0");

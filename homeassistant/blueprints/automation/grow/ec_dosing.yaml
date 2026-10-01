@@ -1,0 +1,134 @@
+blueprint:
+  name: Grow – EC (nutrient) dosing
+  description: >
+    Every 5 minutes, if reservoir EC is below target minus the deadband, doses
+    nutrient parts A, B and (optionally) C in sequence on the Board 02
+    controllers, then waits for mixing. EC above target only raises a
+    notification – there's no top-up/dilution hardware.
+    Skips on stale EC data or when any blocker is on.
+  domain: automation
+  input:
+    ec_sensor:
+      name: Reservoir EC (µS/cm)
+      selector: { entity: { domain: sensor } }
+    target_ec:
+      name: Target EC (µS/cm)
+      default: 1400
+      selector: { number: { min: 100, max: 4000, step: 10, mode: box } }
+    deadband:
+      name: Deadband (± µS/cm)
+      default: 100
+      selector: { number: { min: 10, max: 1000, step: 10, mode: box } }
+    part_a_volume:
+      name: Part A – dose volume entity
+      selector: { entity: { domain: number } }
+    part_a_button:
+      name: Part A – dose button
+      selector: { entity: { domain: button } }
+    part_a_ml:
+      name: Part A – mL per dose
+      default: 2
+      selector: { number: { min: 0.1, max: 50, step: 0.1, unit_of_measurement: mL } }
+    part_b_volume:
+      name: Part B – dose volume entity
+      selector: { entity: { domain: number } }
+    part_b_button:
+      name: Part B – dose button
+      selector: { entity: { domain: button } }
+    part_b_ml:
+      name: Part B – mL per dose
+      default: 2
+      selector: { number: { min: 0.1, max: 50, step: 0.1, unit_of_measurement: mL } }
+    part_c_volume:
+      name: Part C – dose volume entity (optional)
+      default: ""
+      selector: { entity: { domain: number } }
+    part_c_button:
+      name: Part C – dose button (optional)
+      default: ""
+      selector: { entity: { domain: button } }
+    part_c_ml:
+      name: Part C – mL per dose
+      default: 0
+      selector: { number: { min: 0, max: 50, step: 0.1, unit_of_measurement: mL } }
+    gap_seconds:
+      name: Pause between parts (s)
+      description: Keeps concentrated parts from meeting in the reservoir at the same spot.
+      default: 60
+      selector: { number: { min: 0, max: 600, unit_of_measurement: s } }
+    mix_minutes:
+      name: Mixing time after a dose (min)
+      default: 20
+      selector: { number: { min: 1, max: 120, unit_of_measurement: min } }
+    max_age_minutes:
+      name: Max EC reading age (min)
+      default: 5
+      selector: { number: { min: 1, max: 60, unit_of_measurement: min } }
+    blockers:
+      name: Blockers
+      default: []
+      selector: { entity: { multiple: true } }
+    notify_high:
+      name: Action when EC is too high
+      default: []
+      selector: { action: {} }
+
+mode: single
+max_exceeded: silent
+
+variables:
+  ec_sensor: !input ec_sensor
+  target: !input target_ec
+  band: !input deadband
+  max_age: !input max_age_minutes
+  blockers: !input blockers
+  part_c_button: !input part_c_button
+
+triggers:
+  - trigger: time_pattern
+    minutes: "/5"
+
+conditions:
+  - condition: template
+    value_template: >
+      {% set s = states[ec_sensor] %}
+      {{ s is not none and is_number(s.state)
+         and (now() - s.last_reported).total_seconds() < max_age * 60 }}
+  - condition: template
+    value_template: "{{ blockers | select('is_state', 'on') | list | count == 0 }}"
+
+actions:
+  - variables:
+      ec: "{{ states(ec_sensor) | float }}"
+  - choose:
+      - conditions: "{{ ec < target - band }}"
+        sequence:
+          - action: number.set_value
+            target: { entity_id: !input part_a_volume }
+            data: { value: !input part_a_ml }
+          - action: button.press
+            target: { entity_id: !input part_a_button }
+          - delay: { seconds: !input gap_seconds }
+          - action: number.set_value
+            target: { entity_id: !input part_b_volume }
+            data: { value: !input part_b_ml }
+          - action: button.press
+            target: { entity_id: !input part_b_button }
+          - if: "{{ part_c_button not in ['', none] }}"
+            then:
+              - delay: { seconds: !input gap_seconds }
+              - action: number.set_value
+                target: { entity_id: !input part_c_volume }
+                data: { value: !input part_c_ml }
+              - action: button.press
+                target: { entity_id: !input part_c_button }
+          - action: logbook.log
+            data:
+              name: EC dosing
+              message: "EC {{ ec }} < {{ target - band }}: dosed nutrients"
+          - delay: { minutes: !input mix_minutes }
+      - conditions: "{{ ec > target + 2 * band }}"
+        sequence:
+          - choose: []
+            default: !input notify_high
+          - delay: { hours: 1 }   # don't repeat the alert every 5 min

@@ -1,0 +1,47 @@
+# Shared by every node. Each device file sets:
+#   node_name     e.g. room01-dosing-a   (unique, DNS-safe)
+#   friendly_name e.g. "Room 01 Dosing A"
+#   area          e.g. "Room 01"
+esphome:
+  name: ${node_name}
+  friendly_name: ${friendly_name}
+  area: ${area}
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: ${node_name}
+    password: !secret fallback_ap_password
+
+captive_portal:
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+logger:
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi signal"
+    update_interval: 60s
+    entity_category: diagnostic
+  - platform: uptime
+    name: "Uptime"
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: version
+    name: "ESPHome version"
+    hide_timestamp: true
+    entity_category: diagnostic
+
+button:
+  - platform: restart
+    name: "Restart"
+    entity_category: config

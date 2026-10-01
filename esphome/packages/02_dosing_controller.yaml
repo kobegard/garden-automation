@@ -1,0 +1,325 @@
+# Board 02 — Dosing Controller (4x 12 V peristaltic pumps, low-side AO3400A).
+#
+# Pump -> GPIO map: from the 2026-09-18 system review (F2), read off the PCB
+# silkscreen and pad-1 shape. The board doc's "Pump 3 = GPIO12" is WRONG.
+#   Pump 1  P2.3  GPIO5  (D1)
+#   Pump 2  P1.3  GPIO13 (D7)
+#   Pump 3  P1.5  GPIO14 (D5)
+#   Pump 4  P2.4  GPIO4  (D2)
+# Meter-check each channel at commissioning: this board doses chemicals.
+#
+# Safety, all enforced on the device so a WiFi/HA drop can't overdose:
+#   - Every dose is a timed on-device script. HA only asks for "N mL".
+#   - Every pump has a hard max-on watchdog (max_on_s), manual switch included.
+#   - Only one pump runs at a time (interlock). Doses queue.
+#   - "Dosing enabled" off stops all pumps and rejects new doses. HA's flood
+#     / low-level interlock turns this off.
+#
+# Device file substitutions: p1_name .. p4_name (e.g. "Pump 1 pH Up").
+
+substitutions:
+  max_dose_s: "60"     # longest single dose the script will run
+  max_on_s: "90"       # absolute watchdog for any pump-on, including manual
+  default_flow: "50"   # mL/min until calibrated (Kamoer NKP; measure it!)
+
+globals:
+  - id: dose_ms
+    type: uint32_t
+    initial_value: "0"
+
+switch:
+  - platform: template
+    id: dosing_enabled
+    name: "Dosing enabled"
+    icon: mdi:shield-check
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_off:
+      - script.stop: dose
+      - switch.turn_off: pump1
+      - switch.turn_off: pump2
+      - switch.turn_off: pump3
+      - switch.turn_off: pump4
+
+  - platform: gpio
+    id: pump1
+    name: "${p1_name}"
+    icon: mdi:pump
+    pin: GPIO5
+    restore_mode: ALWAYS_OFF
+    interlock: [pump2, pump3, pump4]
+    interlock_wait_time: 200ms
+    on_turn_on:
+      - if:
+          condition:
+            switch.is_off: dosing_enabled
+          then:
+            - switch.turn_off: pump1
+          else:
+            - script.execute: watchdog1
+    on_turn_off:
+      - script.stop: watchdog1
+
+  - platform: gpio
+    id: pump2
+    name: "${p2_name}"
+    icon: mdi:pump
+    pin: GPIO13
+    restore_mode: ALWAYS_OFF
+    interlock: [pump1, pump3, pump4]
+    interlock_wait_time: 200ms
+    on_turn_on:
+      - if:
+          condition:
+            switch.is_off: dosing_enabled
+          then:
+            - switch.turn_off: pump2
+          else:
+            - script.execute: watchdog2
+    on_turn_off:
+      - script.stop: watchdog2
+
+  - platform: gpio
+    id: pump3
+    name: "${p3_name}"
+    icon: mdi:pump
+    pin: GPIO14
+    restore_mode: ALWAYS_OFF
+    interlock: [pump1, pump2, pump4]
+    interlock_wait_time: 200ms
+    on_turn_on:
+      - if:
+          condition:
+            switch.is_off: dosing_enabled
+          then:
+            - switch.turn_off: pump3
+          else:
+            - script.execute: watchdog3
+    on_turn_off:
+      - script.stop: watchdog3
+
+  - platform: gpio
+    id: pump4
+    name: "${p4_name}"
+    icon: mdi:pump
+    pin: GPIO4
+    restore_mode: ALWAYS_OFF
+    interlock: [pump1, pump2, pump3]
+    interlock_wait_time: 200ms
+    on_turn_on:
+      - if:
+          condition:
+            switch.is_off: dosing_enabled
+          then:
+            - switch.turn_off: pump4
+          else:
+            - script.execute: watchdog4
+    on_turn_off:
+      - script.stop: watchdog4
+
+# Per-pump calibration (mL/min) and the volume the "Dose" button delivers.
+number:
+  - platform: template
+    id: flow1
+    name: "${p1_name} flow rate"
+    unit_of_measurement: "mL/min"
+    entity_category: config
+    min_value: 1
+    max_value: 500
+    step: 0.1
+    optimistic: true
+    restore_value: true
+    initial_value: ${default_flow}
+  - platform: template
+    id: flow2
+    name: "${p2_name} flow rate"
+    unit_of_measurement: "mL/min"
+    entity_category: config
+    min_value: 1
+    max_value: 500
+    step: 0.1
+    optimistic: true
+    restore_value: true
+    initial_value: ${default_flow}
+  - platform: template
+    id: flow3
+    name: "${p3_name} flow rate"
+    unit_of_measurement: "mL/min"
+    entity_category: config
+    min_value: 1
+    max_value: 500
+    step: 0.1
+    optimistic: true
+    restore_value: true
+    initial_value: ${default_flow}
+  - platform: template
+    id: flow4
+    name: "${p4_name} flow rate"
+    unit_of_measurement: "mL/min"
+    entity_category: config
+    min_value: 1
+    max_value: 500
+    step: 0.1
+    optimistic: true
+    restore_value: true
+    initial_value: ${default_flow}
+
+  - platform: template
+    id: vol1
+    name: "${p1_name} dose volume"
+    unit_of_measurement: "mL"
+    mode: box
+    min_value: 0
+    max_value: 50
+    step: 0.1
+    optimistic: true
+    restore_value: true
+    initial_value: 1
+  - platform: template
+    id: vol2
+    name: "${p2_name} dose volume"
+    unit_of_measurement: "mL"
+    mode: box
+    min_value: 0
+    max_value: 50
+    step: 0.1
+    optimistic: true
+    restore_value: true
+    initial_value: 1
+  - platform: template
+    id: vol3
+    name: "${p3_name} dose volume"
+    unit_of_measurement: "mL"
+    mode: box
+    min_value: 0
+    max_value: 50
+    step: 0.1
+    optimistic: true
+    restore_value: true
+    initial_value: 1
+  - platform: template
+    id: vol4
+    name: "${p4_name} dose volume"
+    unit_of_measurement: "mL"
+    mode: box
+    min_value: 0
+    max_value: 50
+    step: 0.1
+    optimistic: true
+    restore_value: true
+    initial_value: 1
+
+button:
+  - platform: template
+    name: "${p1_name} dose"
+    icon: mdi:eyedropper
+    on_press:
+      - script.execute: { id: dose, pump: 1, ml: !lambda "return id(vol1).state;" }
+  - platform: template
+    name: "${p2_name} dose"
+    icon: mdi:eyedropper
+    on_press:
+      - script.execute: { id: dose, pump: 2, ml: !lambda "return id(vol2).state;" }
+  - platform: template
+    name: "${p3_name} dose"
+    icon: mdi:eyedropper
+    on_press:
+      - script.execute: { id: dose, pump: 3, ml: !lambda "return id(vol3).state;" }
+  - platform: template
+    name: "${p4_name} dose"
+    icon: mdi:eyedropper
+    on_press:
+      - script.execute: { id: dose, pump: 4, ml: !lambda "return id(vol4).state;" }
+  - platform: template
+    name: "Stop all pumps"
+    icon: mdi:stop-circle
+    on_press:
+      - script.stop: dose
+      - switch.turn_off: pump1
+      - switch.turn_off: pump2
+      - switch.turn_off: pump3
+      - switch.turn_off: pump4
+
+# Callable from HA as esphome.<node_name>_dose_ml (pump = 1..4 on this board).
+api:
+  actions:
+    - action: dose_ml
+      variables:
+        pump: int
+        ml: float
+      then:
+        - script.execute: { id: dose, pump: !lambda "return pump;", ml: !lambda "return ml;" }
+
+script:
+  - id: dose
+    mode: queued
+    max_runs: 8
+    parameters:
+      pump: int
+      ml: float
+    then:
+      - if:
+          condition:
+            lambda: |-
+              if (!id(dosing_enabled).state) {
+                ESP_LOGW("dose", "Pump %d: dosing disabled, dose rejected", pump);
+                return false;
+              }
+              float flow = 0;
+              switch (pump) {
+                case 1: flow = id(flow1).state; break;
+                case 2: flow = id(flow2).state; break;
+                case 3: flow = id(flow3).state; break;
+                case 4: flow = id(flow4).state; break;
+                default:
+                  ESP_LOGE("dose", "No pump %d on this board", pump);
+                  return false;
+              }
+              if (!(ml > 0) || !(flow > 0)) return false;
+              float s = ml / flow * 60.0f;
+              if (s > ${max_dose_s}) {
+                ESP_LOGW("dose", "Pump %d: %.1f mL needs %.1f s, capped at ${max_dose_s} s", pump, ml, s);
+                s = ${max_dose_s};
+              }
+              id(dose_ms) = (uint32_t) (s * 1000.0f);
+              ESP_LOGI("dose", "Pump %d: %.2f mL -> %u ms", pump, ml, id(dose_ms));
+              return true;
+          then:
+            - lambda: |-
+                switch (pump) {
+                  case 1: id(pump1).turn_on(); break;
+                  case 2: id(pump2).turn_on(); break;
+                  case 3: id(pump3).turn_on(); break;
+                  case 4: id(pump4).turn_on(); break;
+                }
+            - delay: !lambda "return id(dose_ms);"
+            - switch.turn_off: pump1
+            - switch.turn_off: pump2
+            - switch.turn_off: pump3
+            - switch.turn_off: pump4
+            - delay: 1s   # let the line settle before the next queued dose
+
+  - id: watchdog1
+    mode: restart
+    then:
+      - delay: ${max_on_s}s
+      - logger.log: { level: WARN, format: "Pump 1 watchdog tripped" }
+      - switch.turn_off: pump1
+  - id: watchdog2
+    mode: restart
+    then:
+      - delay: ${max_on_s}s
+      - logger.log: { level: WARN, format: "Pump 2 watchdog tripped" }
+      - switch.turn_off: pump2
+  - id: watchdog3
+    mode: restart
+    then:
+      - delay: ${max_on_s}s
+      - logger.log: { level: WARN, format: "Pump 3 watchdog tripped" }
+      - switch.turn_off: pump3
+  - id: watchdog4
+    mode: restart
+    then:
+      - delay: ${max_on_s}s
+      - logger.log: { level: WARN, format: "Pump 4 watchdog tripped" }
+      - switch.turn_off: pump4

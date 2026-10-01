@@ -1,0 +1,10 @@
+substitutions:
+  node_name: room01-reservoir
+  friendly_name: "Room 01 Reservoir"
+  area: "Room 01"
+  tank_empty_mm: "600"   # TODO measure: sensor face -> tank floor
+  tank_full_mm: "100"    # TODO measure: sensor face -> full line
+
+packages:
+  base: !include common/base.yaml
+  board: !include packages/01_reservoir_sensor_hub.yaml

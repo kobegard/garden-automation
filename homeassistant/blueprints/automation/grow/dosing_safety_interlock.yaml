@@ -1,0 +1,57 @@
+blueprint:
+  name: Grow – dosing safety interlock
+  description: >
+    Turns OFF "Dosing enabled" on the room's Board 02 controllers (which also
+    stops any running pump on the device) when a flood sensor goes wet, the
+    reservoir level drops below a minimum, or the reservoir hub goes
+    unavailable. Dosing stays off until you turn it back on by hand.
+  domain: automation
+  input:
+    dosing_switches:
+      name: "\"Dosing enabled\" switches (both Board 02 units)"
+      selector: { entity: { domain: switch, multiple: true } }
+    flood_sensors:
+      name: Flood sensors
+      selector: { entity: { domain: binary_sensor, multiple: true } }
+    level_sensor:
+      name: Reservoir level (%)
+      selector: { entity: { domain: sensor } }
+    min_level:
+      name: Minimum level (%)
+      default: 15
+      selector: { number: { min: 0, max: 90, unit_of_measurement: "%" } }
+    on_trip:
+      name: Extra actions on trip (e.g. notify)
+      default: []
+      selector: { action: {} }
+
+mode: queued
+
+variables:
+  level_sensor: !input level_sensor
+  min_level: !input min_level
+
+triggers:
+  - trigger: state
+    entity_id: !input flood_sensors
+    to: "on"
+    id: flood
+  - trigger: numeric_state
+    entity_id: !input level_sensor
+    below: !input min_level
+    id: low_level
+  - trigger: state
+    entity_id: !input level_sensor
+    to: "unavailable"
+    for: { minutes: 5 }
+    id: hub_offline
+
+actions:
+  - action: switch.turn_off
+    target: { entity_id: !input dosing_switches }
+  - action: logbook.log
+    data:
+      name: Dosing interlock
+      message: "Dosing disabled ({{ trigger.id }})"
+  - choose: []
+    default: !input on_trip

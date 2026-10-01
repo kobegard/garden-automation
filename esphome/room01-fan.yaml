@@ -1,0 +1,9 @@
+substitutions:
+  node_name: room01-fan
+  friendly_name: "Room 01 Fans"
+  area: "Room 01"
+
+packages:
+  base: !include common/base.yaml
+  mcu: !include common/d1_mini.yaml
+  board: !include packages/05_fan_controller.yaml

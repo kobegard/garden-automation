@@ -1,0 +1,93 @@
+blueprint:
+  name: Grow – fan speed from temperature and humidity
+  description: >
+    Sets the Board 05 fans proportionally: minimum speed at or below the low
+    thresholds, maximum at or above the high ones, whichever of temperature or
+    humidity asks for more. While CO2 enrichment is on, fans are held at
+    minimum so the CO2 isn't exhausted.
+  domain: automation
+  input:
+    fans:
+      name: Fans
+      selector: { entity: { domain: fan, multiple: true } }
+    temp_sensor:
+      name: Air temperature
+      selector: { entity: { domain: sensor, device_class: temperature } }
+    rh_sensor:
+      name: Air humidity
+      selector: { entity: { domain: sensor, device_class: humidity } }
+    temp_low:
+      name: Temperature for minimum speed
+      default: 24
+      selector: { number: { min: 10, max: 40, step: 0.5 } }
+    temp_high:
+      name: Temperature for maximum speed
+      default: 29
+      selector: { number: { min: 10, max: 45, step: 0.5 } }
+    rh_low:
+      name: Humidity for minimum speed (%)
+      default: 55
+      selector: { number: { min: 20, max: 95, unit_of_measurement: "%" } }
+    rh_high:
+      name: Humidity for maximum speed (%)
+      default: 70
+      selector: { number: { min: 20, max: 100, unit_of_measurement: "%" } }
+    min_pct:
+      name: Minimum fan speed (%)
+      default: 20
+      selector: { number: { min: 0, max: 100, step: 10, unit_of_measurement: "%" } }
+    max_pct:
+      name: Maximum fan speed (%)
+      default: 100
+      selector: { number: { min: 10, max: 100, step: 10, unit_of_measurement: "%" } }
+    co2_switch:
+      name: CO2 enrichment switch (optional)
+      default: ""
+      selector: { entity: { domain: switch } }
+
+mode: restart
+
+variables:
+  fans: !input fans
+  temp_sensor: !input temp_sensor
+  rh_sensor: !input rh_sensor
+  t_lo: !input temp_low
+  t_hi: !input temp_high
+  rh_lo: !input rh_low
+  rh_hi: !input rh_high
+  p_min: !input min_pct
+  p_max: !input max_pct
+  co2_switch: !input co2_switch
+
+triggers:
+  - trigger: state
+    entity_id:
+      - !input temp_sensor
+      - !input rh_sensor
+  - trigger: time_pattern
+    minutes: "/1"
+
+actions:
+  - variables:
+      t: "{{ states(temp_sensor) }}"
+      rh: "{{ states(rh_sensor) }}"
+      pct: >
+        {% if not is_number(t) or not is_number(rh) %}
+          {{ p_max }}
+        {% elif co2_switch not in ['', none] and is_state(co2_switch, 'on') %}
+          {{ p_min }}
+        {% else %}
+          {% set ft = ((t|float - t_lo) / [t_hi - t_lo, 0.1]|max) %}
+          {% set fh = ((rh|float - rh_lo) / [rh_hi - rh_lo, 1]|max) %}
+          {% set f = [[ft, fh]|max, 0]|max %}
+          {% set f = [f, 1]|min %}
+          {{ (((p_min + f * (p_max - p_min)) / 10) | round(0) * 10) | int }}
+        {% endif %}
+  - repeat:
+      for_each: "{{ fans }}"
+      sequence:
+        - if: "{{ (state_attr(repeat.item, 'percentage') or -1) | int != pct | int or not is_state(repeat.item, 'on') }}"
+          then:
+            - action: fan.turn_on
+              target: { entity_id: "{{ repeat.item }}" }
+              data: { percentage: "{{ pct | int }}" }

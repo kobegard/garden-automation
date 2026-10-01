@@ -1,0 +1,9 @@
+# Wemos D1 mini (V4.0.0, USB-C, 4 MB) on the P1/P2 sockets of boards 02/04/05/06.
+# `d1_mini` (4 MB) also runs on a D1 Mini Pro (16 MB); the pin map is the same.
+#   D1=GPIO5  D2=GPIO4  D5=GPIO14  D6=GPIO12  D7=GPIO13
+esp8266:
+  board: d1_mini
+  restore_from_flash: true
+
+preferences:
+  flash_write_interval: 5min

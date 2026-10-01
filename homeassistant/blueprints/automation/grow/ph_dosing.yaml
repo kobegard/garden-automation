@@ -1,0 +1,103 @@
+blueprint:
+  name: Grow – pH dosing
+  description: >
+    Every 5 minutes, compares reservoir pH with the target and, if it is out of
+    the deadband, asks the Board 02 dosing controller for a small pH Up or
+    pH Down dose. Then waits for the reservoir to mix before it looks again.
+    The dose itself is timed on the ESP so a WiFi drop can't overdose.
+    Skips dosing on stale pH data or when any blocker (flood, low level) is on.
+  domain: automation
+  input:
+    ph_sensor:
+      name: Reservoir pH
+      selector: { entity: { domain: sensor } }
+    target_ph:
+      name: Target pH
+      default: 5.9
+      selector: { number: { min: 4.5, max: 7.5, step: 0.05 } }
+    deadband:
+      name: Deadband (± pH)
+      description: No dosing while pH is within target ± this.
+      default: 0.15
+      selector: { number: { min: 0.05, max: 1.0, step: 0.05 } }
+    ph_up_volume:
+      name: pH Up – dose volume entity
+      selector: { entity: { domain: number } }
+    ph_up_button:
+      name: pH Up – dose button
+      selector: { entity: { domain: button } }
+    ph_down_volume:
+      name: pH Down – dose volume entity
+      selector: { entity: { domain: number } }
+    ph_down_button:
+      name: pH Down – dose button
+      selector: { entity: { domain: button } }
+    dose_ml:
+      name: Dose size (mL)
+      default: 1
+      selector: { number: { min: 0.1, max: 20, step: 0.1, unit_of_measurement: mL } }
+    mix_minutes:
+      name: Mixing time after a dose (min)
+      default: 15
+      selector: { number: { min: 1, max: 120, unit_of_measurement: min } }
+    max_age_minutes:
+      name: Max pH reading age (min)
+      default: 5
+      selector: { number: { min: 1, max: 60, unit_of_measurement: min } }
+    blockers:
+      name: Blockers
+      description: Dosing is skipped while any of these is "on" (flood sensors, low-level alarm, maintenance helper…).
+      default: []
+      selector: { entity: { multiple: true } }
+
+mode: single
+max_exceeded: silent
+
+variables:
+  ph_sensor: !input ph_sensor
+  target: !input target_ph
+  band: !input deadband
+  max_age: !input max_age_minutes
+  blockers: !input blockers
+
+triggers:
+  - trigger: time_pattern
+    minutes: "/5"
+
+conditions:
+  - condition: template
+    value_template: >
+      {% set s = states[ph_sensor] %}
+      {{ s is not none and is_number(s.state)
+         and (now() - s.last_reported).total_seconds() < max_age * 60 }}
+  - condition: template
+    value_template: "{{ blockers | select('is_state', 'on') | list | count == 0 }}"
+
+actions:
+  - variables:
+      ph: "{{ states(ph_sensor) | float }}"
+  - choose:
+      - conditions: "{{ ph > target + band }}"
+        sequence:
+          - action: number.set_value
+            target: { entity_id: !input ph_down_volume }
+            data: { value: !input dose_ml }
+          - action: button.press
+            target: { entity_id: !input ph_down_button }
+          - action: logbook.log
+            data:
+              name: pH dosing
+              message: "pH {{ ph }} > {{ target + band }}: dosed pH Down"
+          - delay: { minutes: !input mix_minutes }
+      - conditions: "{{ ph < target - band }}"
+        sequence:
+          - action: number.set_value
+            target: { entity_id: !input ph_up_volume }
+            data: { value: !input dose_ml }
+          - action: button.press
+            target: { entity_id: !input ph_up_button }
+          - action: logbook.log
+            data:
+              name: pH dosing
+              message: "pH {{ ph }} < {{ target - band }}: dosed pH Up"
+          - delay: { minutes: !input mix_minutes }

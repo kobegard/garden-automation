@@ -1,0 +1,101 @@
+blueprint:
+  name: Grow – light schedule with sunrise/sunset ramp
+  description: >
+    At "on" time switches the Kasa plugs on and ramps the Board 06 dimmer from
+    its minimum to the target brightness. At "off" time ramps down, then
+    switches the plugs off (so the lights are fully off at off-time + ramp).
+    Every 10 minutes and at HA start it re-asserts the correct state, e.g.
+    after a power cut. Windows that cross midnight work.
+  domain: automation
+  input:
+    dimmer:
+      name: Dimmer (Board 06 light)
+      selector: { entity: { domain: light } }
+    plugs:
+      name: Light power plugs
+      selector: { entity: { domain: switch, multiple: true } }
+    on_time:
+      name: Lights on
+      default: "06:00:00"
+      selector: { time: {} }
+    off_time:
+      name: Lights off
+      default: "00:00:00"
+      selector: { time: {} }
+    brightness:
+      name: Target brightness (%)
+      default: 100
+      selector: { number: { min: 10, max: 100, unit_of_measurement: "%" } }
+    ramp_minutes:
+      name: Ramp length (min)
+      default: 30
+      selector: { number: { min: 0, max: 120, unit_of_measurement: min } }
+
+mode: single
+max_exceeded: silent
+
+variables:
+  plugs: !input plugs
+  dimmer: !input dimmer
+  target: !input brightness
+  ramp: !input ramp_minutes
+
+triggers:
+  - trigger: time
+    at: !input on_time
+    id: sunrise
+  - trigger: time
+    at: !input off_time
+    id: sunset
+  - trigger: homeassistant
+    event: start
+    id: enforce
+  - trigger: time_pattern
+    minutes: "/10"
+    id: enforce
+
+actions:
+  - choose:
+      - conditions: "{{ trigger.id == 'sunrise' }}"
+        sequence:
+          - action: light.turn_on
+            target: { entity_id: !input dimmer }
+            data: { brightness_pct: 10, transition: 0 }
+          - action: switch.turn_on
+            target: { entity_id: !input plugs }
+          - delay: { seconds: 5 }
+          - action: light.turn_on
+            target: { entity_id: !input dimmer }
+            data:
+              brightness_pct: "{{ target }}"
+              transition: "{{ ramp * 60 }}"
+          - delay: { minutes: "{{ ramp }}" }
+      - conditions: "{{ trigger.id == 'sunset' }}"
+        sequence:
+          - action: light.turn_on
+            target: { entity_id: !input dimmer }
+            data:
+              brightness_pct: 10
+              transition: "{{ ramp * 60 }}"
+          - delay: { minutes: "{{ ramp }}" }
+          - action: switch.turn_off
+            target: { entity_id: !input plugs }
+      - conditions:
+          - "{{ trigger.id == 'enforce' }}"
+          - condition: time
+            after: !input on_time
+            before: !input off_time
+        sequence:
+          - if: "{{ plugs | select('is_state', 'off') | list | count > 0 }}"
+            then:
+              - action: light.turn_on
+                target: { entity_id: !input dimmer }
+                data: { brightness_pct: "{{ target }}" }
+              - action: switch.turn_on
+                target: { entity_id: !input plugs }
+      - conditions: "{{ trigger.id == 'enforce' }}"
+        sequence:
+          - if: "{{ plugs | select('is_state', 'on') | list | count > 0 }}"
+            then:
+              - action: switch.turn_off
+                target: { entity_id: !input plugs }

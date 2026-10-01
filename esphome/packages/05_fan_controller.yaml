@@ -1,0 +1,48 @@
+# Board 05 — Fan Controller, 2x AC Infinity Cloudline via UIS D+.
+#   Fan 1: GPIO12 (D6, P2.5) -> M1 -> S1.1     [2026-09-18 review, V]
+#   Fan 2: GPIO14 (D5, P2.4) -> M2 -> S2.1
+# The MOSFET pulls D+ low, so duty is inverted: `inverted: true` makes
+# fan speed 100 % = D+ held high = max speed.
+#
+# Power path (review F1, CRITICAL on the 09-02 layout): D1-D4 were reversed.
+# Netlist_05_fan_controller_2026-09-18 has them flipped: D1/D2 (SS34) pin 1
+# (cathode) on H1.4 with pin 2 on the fused fan nodes; D3/D4 (SMAJ14A) pin 1
+# on the fused nodes, pin 2 on GND. That is correct IF pin 1 = cathode on the
+# D3/D4 footprint too (it's a different SMA footprint from D1/D2). Diode-test
+# D3/D4 on the first assembled board before plugging a fan in.
+#
+# UIS D+ (AC Infinity UIS report): 1-25 kHz accepted, ~5 kHz native, linear
+# duty, ~10 % per step (10 % = step 1, 100 % = step 10, 0 % = standby).
+# GPIO map re-checked on the 09-18 netlist: P2.5 -> R4 -> M1 -> S1 (Fan 1),
+# P2.4 -> R3 -> M2 -> S2 (Fan 2).
+
+substitutions:
+  fan_pwm_hz: "5000"   # UIS native ~5 kHz; the fan's RC filter expects it
+
+output:
+  - platform: esp8266_pwm
+    id: fan1_pwm
+    pin: GPIO12
+    frequency: ${fan_pwm_hz} Hz
+    inverted: true
+  - platform: esp8266_pwm
+    id: fan2_pwm
+    pin: GPIO14
+    frequency: ${fan_pwm_hz} Hz
+    inverted: true
+
+# speed_count 10 = the Cloudline's 1-10 steps (10 % duty per step per the UIS
+# report). Check a few steps against the fan's own display at commissioning.
+fan:
+  - platform: speed
+    id: fan1
+    name: "Fan 1"
+    output: fan1_pwm
+    speed_count: 10
+    restore_mode: RESTORE_DEFAULT_ON
+  - platform: speed
+    id: fan2
+    name: "Fan 2"
+    output: fan2_pwm
+    speed_count: 10
+    restore_mode: RESTORE_DEFAULT_ON

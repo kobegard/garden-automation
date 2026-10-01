@@ -1,0 +1,30 @@
+# Board 06 — Light Controller. One channel dims all 4 SE7000 drivers together.
+#   GPIO14 (D5, P2.5) -> R3 -> M1 pulls DIM+ down via R2 100R; C1 10 uF
+#   filters it to a DC level. More MOSFET duty = dimmer, hence `inverted`.
+#
+# On/off is the Kasa plugs' job. ESPHome "off" here only pulls DIM+ to its
+# floor (Mean Well: output undefined below ~8 %); it doesn't switch mains.
+# Unpowered/rebooting board = DIM+ undriven = driver default (assumed 100 %,
+# unconfirmed). Bench-check the floor voltage and default before relying on it.
+
+substitutions:
+  light_pwm_hz: "1000"
+  light_min_power: "0.10"   # keep above the ~8 % undefined region
+
+output:
+  - platform: esp8266_pwm
+    id: dim_pwm
+    pin: GPIO14
+    frequency: ${light_pwm_hz} Hz
+    inverted: true
+    min_power: ${light_min_power}
+    zero_means_zero: true
+
+light:
+  - platform: monochromatic
+    id: grow_lights
+    name: "Grow lights dimmer"
+    output: dim_pwm
+    gamma_correct: 1.0      # brightness % maps linearly to DIM+ level
+    default_transition_length: 2s
+    restore_mode: RESTORE_DEFAULT_ON

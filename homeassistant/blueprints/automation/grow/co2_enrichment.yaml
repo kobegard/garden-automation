@@ -1,0 +1,85 @@
+blueprint:
+  name: Grow – CO2 enrichment
+  description: >
+    Runs the CO2 regulator's Kasa plug only while the lights are on, CO2 is
+    below target minus the band, the room isn't too hot and the SCD41 reading
+    is fresh. Hard-off above the safety ceiling or when anything is unknown.
+  domain: automation
+  input:
+    co2_sensor:
+      name: CO2 (ppm)
+      selector: { entity: { domain: sensor } }
+    co2_switch:
+      name: CO2 regulator plug
+      selector: { entity: { domain: switch } }
+    lights_on:
+      name: Lights-on indicator
+      description: Any entity that is "on" when the lights are on (e.g. a light plug).
+      selector: { entity: {} }
+    temp_sensor:
+      name: Air temperature
+      selector: { entity: { domain: sensor, device_class: temperature } }
+    target_ppm:
+      name: Target CO2 (ppm)
+      default: 1000
+      selector: { number: { min: 400, max: 1500, step: 50, mode: box } }
+    band_ppm:
+      name: Band (ppm)
+      default: 100
+      selector: { number: { min: 25, max: 500, step: 25, mode: box } }
+    max_temp:
+      name: No enrichment above (°C)
+      default: 30
+      selector: { number: { min: 15, max: 40, step: 0.5 } }
+    ceiling_ppm:
+      name: Safety ceiling (ppm)
+      default: 1600
+      selector: { number: { min: 800, max: 5000, step: 50, mode: box } }
+    max_age_minutes:
+      name: Max CO2 reading age (min)
+      default: 3
+      selector: { number: { min: 1, max: 30, unit_of_measurement: min } }
+
+mode: restart
+
+variables:
+  co2_sensor: !input co2_sensor
+  co2_switch: !input co2_switch
+  lights_on: !input lights_on
+  temp_sensor: !input temp_sensor
+  target: !input target_ppm
+  band: !input band_ppm
+  max_temp: !input max_temp
+  ceiling: !input ceiling_ppm
+  max_age: !input max_age_minutes
+
+triggers:
+  - trigger: state
+    entity_id:
+      - !input co2_sensor
+      - !input lights_on
+      - !input temp_sensor
+  - trigger: time_pattern
+    minutes: "/1"
+
+actions:
+  - variables:
+      s: "{{ states[co2_sensor] }}"
+      fresh: >
+        {{ s is not none and is_number(s.state)
+           and (now() - s.last_reported).total_seconds() < max_age * 60 }}
+      co2: "{{ states(co2_sensor) | float(0) }}"
+      t: "{{ states(temp_sensor) | float(99) }}"
+      want: >
+        {% if not fresh or not is_state(lights_on, 'on') or t > max_temp or co2 >= ceiling %}off
+        {% elif co2 < target - band %}on
+        {% elif co2 >= target %}off
+        {% else %}{{ states(co2_switch) }}{% endif %}
+  - if: "{{ want | trim == 'on' and not is_state(co2_switch, 'on') }}"
+    then:
+      - action: switch.turn_on
+        target: { entity_id: !input co2_switch }
+  - if: "{{ want | trim != 'on' and not is_state(co2_switch, 'off') }}"
+    then:
+      - action: switch.turn_off
+        target: { entity_id: !input co2_switch }

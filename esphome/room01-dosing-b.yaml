@@ -1,0 +1,13 @@
+substitutions:
+  node_name: room01-dosing-b
+  friendly_name: "Room 01 Dosing B"
+  area: "Room 01"
+  p1_name: "Pump 5"
+  p2_name: "Pump 6"
+  p3_name: "Pump 7"
+  p4_name: "Pump 8"
+
+packages:
+  base: !include common/base.yaml
+  mcu: !include common/d1_mini.yaml
+  board: !include packages/02_dosing_controller.yaml

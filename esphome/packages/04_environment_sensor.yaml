@@ -1,0 +1,74 @@
+# Board 04 — Environment Sensor. One I2C bus on the V3V (3.28 V) buck rail.
+#   SCL = GPIO5 (D1, P1.3), SDA = GPIO4 (D2, P1.4)   [2026-09-18 review, V]
+#   0x76 BME280 (SK1)   0x62 SCD41 (SK3)
+#   0x39 AS7343 (CN1)   0x3A MLX90632 (chained off the AS7343 breakout)
+#
+# NOT YET SUPPORTED: ESPHome (2026.6) has no AS7343 or MLX90632 component.
+# Both need an external component; see README "Open items". The i2c scan in
+# the boot log will still show whether 0x39 / 0x3A answer.
+
+i2c:
+  sda: GPIO4
+  scl: GPIO5
+  frequency: 100kHz
+  scan: true
+
+sensor:
+  - platform: bme280_i2c
+    address: 0x76
+    update_interval: 30s
+    temperature:
+      id: air_temp
+      name: "Air temperature"
+      oversampling: 2x
+    humidity:
+      id: air_rh
+      name: "Air humidity"
+      oversampling: 2x
+    pressure:
+      id: air_pressure
+      name: "Air pressure"
+      oversampling: 2x
+
+  - platform: scd4x
+    address: 0x62
+    update_interval: 30s
+    measurement_mode: periodic
+    ambient_pressure_compensation_source: air_pressure
+    co2:
+      id: co2
+      name: "CO2"
+    # SCD41 T/RH sit next to its own heater; BME280 is the room reference.
+    temperature:
+      name: "SCD41 temperature"
+      entity_category: diagnostic
+    humidity:
+      name: "SCD41 humidity"
+      entity_category: diagnostic
+
+  # Air VPD (kPa). Leaf VPD needs the MLX90632 leaf temperature (open item).
+  - platform: template
+    name: "Air VPD"
+    unit_of_measurement: "kPa"
+    device_class: pressure
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: 30s
+    lambda: |-
+      if (isnan(id(air_temp).state) || isnan(id(air_rh).state)) return NAN;
+      float t = id(air_temp).state;
+      float svp = 0.61078f * expf(17.27f * t / (t + 237.3f));
+      return svp * (1.0f - id(air_rh).state / 100.0f);
+
+  - platform: template
+    name: "Dew point"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 30s
+    lambda: |-
+      if (isnan(id(air_temp).state) || isnan(id(air_rh).state) || id(air_rh).state <= 0) return NAN;
+      float t = id(air_temp).state;
+      float g = logf(id(air_rh).state / 100.0f) + 17.62f * t / (243.12f + t);
+      return 243.12f * g / (17.62f - g);
