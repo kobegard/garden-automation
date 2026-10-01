@@ -119,6 +119,10 @@ button:
 sensor:
   # pH: SEN0169-V2 -> DFR0504 isolator -> H1 -> ADS1115 AIN0. Signal is
   # 0-3.0 V, so gain must be 4.096 (default 2.048 clips).
+  # !! H1 is 1=+5V 2=GND 3=AIN0, but the DFR0504 MCU side is A(signal) / + / -
+  # !! (DFRobot wiki). A stock Gravity PH2.0 cable is wrong in EITHER
+  # !! orientation (one way puts 5 V on the isolator output, the other reverses
+  # !! its supply). Re-pin the cable: +5V->'+', GND->'-', AIN0->'A'.
   - platform: ads1115
     id: ph_voltage
     name: "pH probe voltage"

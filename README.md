@@ -76,6 +76,12 @@ pump map has been corrected twice.
    Calibrate pH with the "capture pH 7 / pH 4" buttons in buffer solutions.
    Set `tank_empty_mm` and `tank_full_mm` in `room01-reservoir.yaml`.
    Continuity-check H2.4 to the Feather TX pad (review F6).
+   **Re-pin the H1 to DFR0504 cable.** H1 is +5V/GND/signal, while the
+   DFR0504's MCU side is signal/+/- (DFRobot wiki). A stock Gravity cable is
+   wrong whichever way round it goes in: one way puts 5 V on the isolator
+   output, the other reverses its supply. Also check that H1 measures within
+   5.0 ± 0.1 V, the DFR0504's supply spec; the Feather 5V pin passes through
+   F1 first, so it may sit slightly below 5 V.
 2. **Board 02:** calibrate each pump's flow rate (mL/min) by timing a measured
    volume. Kamoer's listing gives anything from 5.2 to 90 mL/min.
 3. **Board 05:** on the first assembled 09-18 board, diode-test D3/D4 before
