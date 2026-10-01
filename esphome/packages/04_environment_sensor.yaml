@@ -3,9 +3,14 @@
 #   0x76 BME280 (SK1)   0x62 SCD41 (SK3)
 #   0x39 AS7343 (CN1)   0x3A MLX90632 (chained off the AS7343 breakout)
 #
-# NOT YET SUPPORTED: ESPHome (2026.6) has no AS7343 or MLX90632 component.
-# Both need an external component; see README "Open items". The i2c scan in
-# the boot log will still show whether 0x39 / 0x3A answer.
+# AS7343 and MLX90632 use this repo's external components (esphome/components),
+# ported from Adafruit's CircuitPython drivers. Not yet run on hardware.
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [as7343, mlx90632]
 
 i2c:
   sda: GPIO4
@@ -46,7 +51,57 @@ sensor:
       name: "SCD41 humidity"
       entity_category: diagnostic
 
-  # Air VPD (kPa). Leaf VPD needs the MLX90632 leaf temperature (open item).
+  # Canopy (leaf) temperature, MLX90632 looking down through the box floor.
+  - platform: mlx90632
+    address: 0x3A
+    update_interval: 10s
+    emissivity: 0.95
+    object:
+      id: leaf_temp
+      name: "Leaf temperature"
+      filters:
+        - sliding_window_moving_average:
+            window_size: 6
+            send_every: 3
+    ambient:
+      name: "MLX90632 die temperature"
+      entity_category: diagnostic
+
+  # Light. "PAR" is a sum of the 400-700 nm channels and is NOT calibrated:
+  # fit par_factor against a quantum (PAR) meter under the SE7000s, with the
+  # PTFE diffuser in place. Until then use it as a relative trend only.
+  - platform: as7343
+    address: 0x39
+    update_interval: 30s
+    par:
+      name: "PAR (uncalibrated)"
+    par_factor: 1.0
+    clear:
+      name: "Light clear channel"
+      entity_category: diagnostic
+    fz_450nm:
+      name: "Light 450 nm"
+    f6_640nm:
+      name: "Light 640 nm"
+    f7_690nm:
+      name: "Light 690 nm"
+    f8_745nm:
+      name: "Light 745 nm"
+
+  - platform: template
+    name: "Leaf VPD"
+    unit_of_measurement: "kPa"
+    device_class: pressure
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: 30s
+    lambda: |-
+      float tl = id(leaf_temp).state, ta = id(air_temp).state, rh = id(air_rh).state;
+      if (isnan(tl) || isnan(ta) || isnan(rh)) return NAN;
+      auto svp = [](float t) { return 0.61078f * expf(17.27f * t / (t + 237.3f)); };
+      return svp(tl) - svp(ta) * rh / 100.0f;
+
+  # Air VPD (kPa).
   - platform: template
     name: "Air VPD"
     unit_of_measurement: "kPa"

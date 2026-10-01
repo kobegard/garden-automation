@@ -17,6 +17,7 @@ loop. No board talks to another board directly.
 | `esphome/common/base.yaml` | WiFi, API, OTA and diagnostics, shared by every node |
 | `esphome/common/d1_mini.yaml` | Wemos D1 mini (ESP8266) platform for boards 02/04/05/06 |
 | `esphome/packages/0X_*.yaml` | One package per board design: pin map, sensors, safety logic |
+| `esphome/components/` | Custom ESPHome drivers: `as7343` (spectral, auto-gain), `mlx90632` (leaf IR temperature) |
 | `esphome/roomNN-*.yaml` | Per-device files: name, room and per-unit settings |
 | `homeassistant/blueprints/automation/grow/` | Control loops as blueprints, one automation per room per loop |
 | `tools/new_room.py` | Generates the six device files for another room |
@@ -94,10 +95,13 @@ pump map has been corrected twice.
 
 ## Open items
 
-- **AS7343 (0x39) and MLX90632 (0x3A) on Board 04 have no ESPHome driver**
-  (checked against ESPHome 2026.6). They need external components. Leaf VPD
-  depends on the MLX90632. The I2C scan at boot will still show whether
-  either chip answers.
+- **AS7343 and MLX90632 (Board 04)** use custom drivers in
+  `esphome/components/`, ported from Adafruit's CircuitPython drivers with the
+  MLX90632 math aligned to Melexis' reference library. They compile cleanly
+  against ESPHome 2026.6.5 headers but haven't run on hardware yet. Check
+  leaf temperature against an IR thermometer. "PAR (uncalibrated)" is a sum
+  of the 400-700 nm channels: fit `par_factor` against a quantum meter under
+  the SE7000s, with the PTFE diffuser fitted.
 - **DFR0997 display (Board 01):** no ESPHome driver either.
 - **Pump chemical assignments:** pumps 1 and 2 are pH Up and pH Down (from the
   old YAML). Pumps 3-8 are still TBD and named "Pump N".
