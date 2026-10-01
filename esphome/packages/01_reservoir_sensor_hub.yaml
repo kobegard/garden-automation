@@ -59,6 +59,11 @@ uart:
   tx_pin: GPIO44
   baud_rate: 9600
 
+# DS18B20: the board has NO pull-up on the 1-Wire net; the DROK probe's
+# adapter board supplies it (4.7k). Wire H7 to the adapter BY LABEL:
+# H7 is 1=GND 2=VCC 3=DATA, the adapter header is DAT/VCC/GND (reversed), so a
+# straight pin-1-to-pin-1 Dupont lead swaps GND and DATA. Probe: red VCC,
+# yellow DATA, black GND.
 one_wire:
   - platform: gpio
     pin: GPIO5
