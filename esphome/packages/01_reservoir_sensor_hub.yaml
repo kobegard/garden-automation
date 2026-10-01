@@ -184,6 +184,7 @@ sensor:
       - throttle: 10s
 
   - platform: template
+    id: level_pct
     name: "Reservoir level"
     unit_of_measurement: "%"
     icon: mdi:waves
@@ -199,6 +200,7 @@ sensor:
 binary_sensor:
   # Bare-contact probes: dry = 10k pull-up high, wet = pulled to GND.
   - platform: gpio
+    id: flood1
     name: "Flood sensor 1"
     device_class: moisture
     pin:
@@ -212,6 +214,7 @@ binary_sensor:
       - delayed_on: 2s
       - delayed_off: 10s
   - platform: gpio
+    id: flood2
     name: "Flood sensor 2"
     device_class: moisture
     pin:
@@ -224,6 +227,54 @@ binary_sensor:
           return x;
       - delayed_on: 2s
       - delayed_off: 10s
+
+# Local readout: DFR0997 2" IPS (320x240) at 0x2C, on the Feather's STEMMA QT
+# port, which is the same IO8/IO9 bus. The display's Gravity 4-pin connector
+# needs a Gravity-to-JST-SH (STEMMA QT) lead: + -> 3V3, - -> GND, C -> SCL,
+# D -> SDA. Driver: esphome/components/dfr0997 (DFRobot protocol, non-blocking).
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [dfr0997]
+
+dfr0997:
+  - id: local_display
+    address: 0x2C
+    update_interval: 5s
+    background_color: 0x000000
+    lines:
+      - x: 12
+        y: 8
+        color: 0x00FFFF
+        lambda: 'return std::string("${friendly_name}");'
+      - x: 12
+        y: 52
+        lambda: |-
+          float v = id(ph).state;
+          return isnan(v) ? std::string("pH     --") : str_sprintf("pH     %.2f", v);
+      - x: 12
+        y: 92
+        lambda: |-
+          float v = id(ec_ezo).state;
+          return isnan(v) ? std::string("EC     --") : str_sprintf("EC     %.0f uS/cm", v);
+      - x: 12
+        y: 132
+        lambda: |-
+          float v = id(water_temp).state;
+          return isnan(v) ? std::string("Water  --") : str_sprintf("Water  %.1f C", v);
+      - x: 12
+        y: 172
+        lambda: |-
+          float v = id(level_pct).state;
+          return isnan(v) ? std::string("Level  --") : str_sprintf("Level  %.0f %%", v);
+      - x: 12
+        y: 212
+        color: 0xFFA500
+        lambda: |-
+          if (id(flood1).state || id(flood2).state) return std::string("!! FLOOD DETECTED !!");
+          if (!id(sensor_power).state) return std::string("Sensors powered off");
+          return std::string(" ");
 
 esphome:
   on_boot:
