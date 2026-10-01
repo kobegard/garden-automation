@@ -81,7 +81,9 @@ pump map has been corrected twice.
 3. **Board 05:** on the first assembled 09-18 board, diode-test D3/D4 before
    plugging in a fan (see "Hardware" below). Check fan steps 1, 5 and 10
    against the fan's display.
-4. **Board 06:** measure the DIM+ floor and the SE7000's default brightness when
+4. **Board 06:** set the dimmer to 50 % and meter DIM+. About 5 V is good.
+   About 0.05 V means C1 is defeating the dimming; see the warning in
+   `esphome/packages/06_light_controller.yaml` (fix: leave C1 unfitted). Also measure the DIM+ floor and the SE7000's default brightness when
    DIM+ is undriven. Confirm the RJ11 pinout with an ohmmeter.
 
 ## Open items

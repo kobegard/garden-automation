@@ -2,6 +2,20 @@
 #   GPIO14 (D5, P2.5) -> R3 -> M1 pulls DIM+ down via R2 100R; C1 10 uF
 #   filters it to a DC level. More MOSFET duty = dimmer, hence `inverted`.
 #
+# Pin map re-checked on Netlist_06_light_controller_2026-08-30: P2.5 -> R3 ->
+# M1 gate; P1.7 = GND. P2.5 = GPIO14 per the PCB doc-layer pinout + pad shape.
+#
+# !! SUSPECTED DIMMING-CURVE PROBLEM (inferred, bench-check before trusting):
+# !! the drivers *source* ~100 uA each (Mean Well AB-type) into DIM+; they are
+# !! not a 10 V voltage source. With C1 = 10 uF, 4 drivers (~0.4 mA) recharge
+# !! C1 only ~40 mV per 1 ms PWM period, while each on-pulse drains it through
+# !! R2 (tau = 1 ms). Steady state is roughly V = I*R2/duty = 0.04 V / duty:
+# !!   MOSFET duty 0.4 % -> ~10 V    1 % -> ~4 V    10 % -> ~0.4 V    50 % -> ~0.04 V
+# !! so anything below ~99 % brightness would sit at the driver's minimum.
+# !! Test: set 50 % and meter DIM+ (expect ~5 V if fine, ~0.05 V if this holds).
+# !! Fix if confirmed: leave C1 unfitted. Mean Well 3-in-1 inputs take 10 V
+# !! PWM (100 Hz-3 kHz) directly, and this config then works unchanged.
+#
 # On/off is the Kasa plugs' job. ESPHome "off" here only pulls DIM+ to its
 # floor (Mean Well: output undefined below ~8 %); it doesn't switch mains.
 # Unpowered/rebooting board = DIM+ undriven = driver default (assumed 100 %,
