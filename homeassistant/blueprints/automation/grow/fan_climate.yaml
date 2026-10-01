@@ -74,14 +74,16 @@ actions:
       pct: >
         {% if not is_number(t) or not is_number(rh) %}
           {{ p_max }}
-        {% elif co2_switch not in ['', none] and is_state(co2_switch, 'on') %}
-          {{ p_min }}
         {% else %}
           {% set ft = ((t|float - t_lo) / [t_hi - t_lo, 0.1]|max) %}
           {% set fh = ((rh|float - rh_lo) / [rh_hi - rh_lo, 1]|max) %}
           {% set f = [[ft, fh]|max, 0]|max %}
           {% set f = [f, 1]|min %}
-          {{ (((p_min + f * (p_max - p_min)) / 10) | round(0) * 10) | int }}
+          {% if co2_switch not in ['', none] and is_state(co2_switch, 'on') and f < 1 %}
+            {{ p_min }}
+          {% else %}
+            {{ (((p_min + f * (p_max - p_min)) / 10) | round(0) * 10) | int }}
+          {% endif %}
         {% endif %}
   - repeat:
       for_each: "{{ fans }}"

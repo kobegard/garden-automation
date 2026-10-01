@@ -2,8 +2,8 @@ blueprint:
   name: Grow – CO2 enrichment
   description: >
     Runs the CO2 regulator's Kasa plug only while the lights are on, CO2 is
-    below target minus the band, the room isn't too hot and the SCD41 reading
-    is fresh. Hard-off above the safety ceiling or when anything is unknown.
+    below target minus the band, the room isn't too hot or (optionally) too
+    humid, and the SCD41 reading is fresh. Hard-off above the safety ceiling or when anything is unknown.
   domain: automation
   input:
     co2_sensor:
@@ -27,6 +27,18 @@ blueprint:
       name: Band (ppm)
       default: 100
       selector: { number: { min: 25, max: 500, step: 25, mode: box } }
+    rh_sensor:
+      name: Air humidity (optional)
+      description: >
+        If set, enrichment stops above the humidity limit. Use the same limit as
+        the fan blueprint's "humidity for maximum speed", so CO2 isn't injected
+        while the fans are exhausting at full speed.
+      default: ""
+      selector: { entity: { domain: sensor, device_class: humidity } }
+    max_rh:
+      name: No enrichment above (% RH)
+      default: 70
+      selector: { number: { min: 30, max: 100, unit_of_measurement: "%" } }
     max_temp:
       name: No enrichment above (°C)
       default: 30
@@ -52,6 +64,8 @@ variables:
   max_temp: !input max_temp
   ceiling: !input ceiling_ppm
   max_age: !input max_age_minutes
+  rh_sensor: !input rh_sensor
+  max_rh: !input max_rh
 
 triggers:
   - trigger: state
@@ -70,8 +84,9 @@ actions:
            and (now() - s.last_reported).total_seconds() < max_age * 60 }}
       co2: "{{ states(co2_sensor) | float(0) }}"
       t: "{{ states(temp_sensor) | float(99) }}"
+      rh: "{{ 0 if rh_sensor in ['', none] else states(rh_sensor) | float(100) }}"
       want: >
-        {% if not fresh or not is_state(lights_on, 'on') or t > max_temp or co2 >= ceiling %}off
+        {% if not fresh or not is_state(lights_on, 'on') or t > max_temp or rh > max_rh or co2 >= ceiling %}off
         {% elif co2 < target - band %}on
         {% elif co2 >= target %}off
         {% else %}{{ states(co2_switch) }}{% endif %}

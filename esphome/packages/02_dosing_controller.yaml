@@ -34,7 +34,12 @@ switch:
     icon: mdi:shield-check
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
+    # Persist immediately (flash_write_interval is 5 min): a reboot right after
+    # the flood interlock turns dosing off must come back OFF.
+    on_turn_on:
+      - lambda: global_preferences->sync();
     on_turn_off:
+      - lambda: global_preferences->sync();
       - script.stop: dose
       - switch.turn_off: pump1
       - switch.turn_off: pump2

@@ -31,6 +31,10 @@ python3 tools/new_room.py 2 3 4                        # rooms 02-04 (room 01 is
 cd esphome && esphome run room01-dosing-a.yaml         # first flash over USB, then OTA
 ```
 
+Per room, also create one helper: **Settings → Devices & services → Helpers
+→ Date and/or time** (date *and* time), e.g. `input_datetime.room01_dose_lock`.
+Pick it as the "Shared dosing lock" in both the pH and EC automations.
+
 To install the blueprints, copy `homeassistant/blueprints/automation/grow/` into
 `<config>/blueprints/automation/`. Then go to **Settings → Automations →
 Blueprints** and create one automation per room from each blueprint.
@@ -59,7 +63,13 @@ pump map has been corrected twice.
   - each dose is capped at 60 s;
   - every pump (manual switch included) has a 90 s hard watchdog;
   - only one pump runs at a time;
-  - "Dosing enabled" OFF stops everything and rejects new doses.
+  - "Dosing enabled" OFF stops everything and rejects new doses. The switch
+    is written to flash immediately, so a reboot right after a flood trip
+    comes back OFF.
+- **Board 01:** pH and reservoir level only publish when their source
+  reading arrives (ESPHome `copy` sensors, not timed templates). A stalled
+  ADC or ultrasonic sensor therefore goes stale in Home Assistant, and the
+  dosing freshness checks stop dosing instead of acting on a frozen value.
 - **Board 01:** LDO2 (the sensor rail) is held on. The flood pull-ups live on
   that rail, so flood readings are ignored whenever it is off. Without that,
   both inputs would read "wet".
@@ -69,8 +79,13 @@ pump map has been corrected twice.
   - the interlock blueprint turns off "Dosing enabled" on flood, low level, or
     if the reservoir hub goes offline for 5 minutes, and dosing stays off until
     you turn it back on;
-  - CO2 runs only with the lights on, under a temperature limit and a
-    hard ppm ceiling.
+  - pH and EC automations in one room can share a **dosing lock** (an
+    `input_datetime` helper with date and time), so neither doses while the
+    other's dose is still mixing;
+  - CO2 runs only with the lights on, under temperature and (optional)
+    humidity limits and a hard ppm ceiling. The fan blueprint holds fans low
+    during enrichment, but a temperature or humidity at its max threshold
+    always wins.
 
 ## Commissioning checklist
 

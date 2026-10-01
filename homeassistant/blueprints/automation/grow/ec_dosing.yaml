@@ -64,6 +64,15 @@ blueprint:
       name: Max EC reading age (min)
       default: 5
       selector: { number: { min: 1, max: 60, unit_of_measurement: min } }
+    dose_lock:
+      name: Shared dosing lock (optional)
+      description: >
+        An input_datetime helper (date and time) shared by this room's pH and
+        EC automations. Each records its last dose there and won't dose again
+        until mixing time has passed, so pH never corrects a nutrient dose
+        that hasn't mixed in yet (and vice versa).
+      default: ""
+      selector: { entity: { domain: input_datetime } }
     blockers:
       name: Blockers
       default: []
@@ -82,6 +91,8 @@ variables:
   band: !input deadband
   max_age: !input max_age_minutes
   blockers: !input blockers
+  dose_lock: !input dose_lock
+  mix: !input mix_minutes
   part_c_button: !input part_c_button
 
 triggers:
@@ -96,6 +107,11 @@ conditions:
          and (now() - s.last_reported).total_seconds() < max_age * 60 }}
   - condition: template
     value_template: "{{ blockers | select('is_state', 'on') | list | count == 0 }}"
+  - condition: template
+    value_template: >
+      {% if dose_lock in ['', none] %}true{% else %}
+      {{ as_timestamp(now()) - as_timestamp(states(dose_lock), 0) >= mix * 60 }}
+      {% endif %}
 
 actions:
   - variables:
@@ -126,6 +142,11 @@ actions:
             data:
               name: EC dosing
               message: "EC {{ ec }} < {{ target - band }}: dosed nutrients"
+          - if: "{{ dose_lock not in ['', none] }}"
+            then:
+              - action: input_datetime.set_datetime
+                target: { entity_id: "{{ dose_lock }}" }
+                data: { timestamp: "{{ as_timestamp(now()) }}" }
           - delay: { minutes: !input mix_minutes }
       - conditions: "{{ ec > target + 2 * band }}"
         sequence:

@@ -137,18 +137,26 @@ sensor:
           window_size: 7
           send_every: 6
 
-  - platform: template
+  # Derived with `copy` (not a timed template) so pH only publishes when the
+  # ADC actually delivers a reading. A stalled ADS1115 then goes stale in HA
+  # and the dosing blueprints' freshness check stops dosing.
+  - platform: copy
+    source_id: ph_voltage
     id: ph
     name: "Reservoir pH"
     icon: mdi:ph
+    unit_of_measurement: ""
+    device_class: ""
+    entity_category: ""
     state_class: measurement
     accuracy_decimals: 2
-    update_interval: 30s
-    lambda: |-
-      float v = id(ph_voltage).state, v7 = id(ph7_v).state, v4 = id(ph4_v).state;
-      if (isnan(v) || fabsf(v7 - v4) < 0.05f) return NAN;
-      float p = 7.0f + (v - v7) * 3.0f / (v7 - v4);
-      return (p < 0.0f || p > 14.0f) ? NAN : p;
+    filters:
+      - lambda: |-
+          float v7 = id(ph7_v).state, v4 = id(ph4_v).state;
+          if (isnan(x) || fabsf(v7 - v4) < 0.05f) return {};
+          float p = 7.0f + (x - v7) * 3.0f / (v7 - v4);
+          if (p < 0.0f || p > 14.0f) return {};
+          return p;
 
   # EC: Atlas EZO-EC on the isolated carrier, I2C 0x64 (must be switched
   # from UART to I2C mode once, per unit, before installing).
@@ -183,19 +191,22 @@ sensor:
           send_every: 5
       - throttle: 10s
 
-  - platform: template
+  # `copy` for the same reason as pH: no ultrasonic frame, no level update.
+  - platform: copy
+    source_id: level_distance
     id: level_pct
     name: "Reservoir level"
     unit_of_measurement: "%"
     icon: mdi:waves
+    device_class: ""
+    entity_category: ""
     state_class: measurement
     accuracy_decimals: 0
-    update_interval: 15s
-    lambda: |-
-      float d = id(level_distance).state;
-      if (isnan(d)) return NAN;
-      float pct = (${tank_empty_mm} - d) * 100.0f / (${tank_empty_mm} - ${tank_full_mm});
-      return std::max(0.0f, std::min(100.0f, pct));
+    filters:
+      - lambda: |-
+          if (isnan(x)) return {};
+          float pct = (${tank_empty_mm} - x) * 100.0f / (${tank_empty_mm} - ${tank_full_mm});
+          return std::max(0.0f, std::min(100.0f, pct));
 
 binary_sensor:
   # Bare-contact probes: dry = 10k pull-up high, wet = pulled to GND.
