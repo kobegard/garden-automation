@@ -21,6 +21,7 @@ loop. No board talks to another board directly.
 | `esphome/roomNN-*.yaml` | Per-device files: name, room and per-unit settings |
 | `homeassistant/blueprints/automation/grow/` | Control loops as blueprints, one automation per room per loop |
 | `tools/new_room.py` | Generates the six device files for another room |
+| `wh52/bench_test/` | Arduino sketch that checks the WH52 review findings on the current board |
 
 ## Getting started
 
@@ -108,9 +109,9 @@ pump map has been corrected twice.
   warning. It needs a Gravity-to-STEMMA QT lead and hasn't run on hardware.
 - **Pump chemical assignments:** pumps 1 and 2 are pH Up and pH Down (from the
   old YAML). Pumps 3-8 are still TBD and named "Pump N".
-- **WH52 soil probe:** no firmware yet. The moisture receive path (D2, review
-  F3) and the ADC2 thermistor (F4) should be bench-tested first; see
-  `WH52_D2_ADC2_Research_2026-09-18`. Nothing in the system acts on soil data yet.
+- **WH52 soil probe:** no production firmware yet. Run `wh52/bench_test`
+  first; it checks the moisture receive path (D2, review F3), R8 loading and
+  the ADC2 thermistor (F4), and its README lists the respin fixes. Nothing in the system acts on soil data yet.
 - **Compile:** every config passes `esphome config` (ESPHome 2026.6.5). A full
   `esphome compile` hasn't been run because the build sandbox couldn't reach
   the PlatformIO registry. Run one compile per board type before the first flash.
