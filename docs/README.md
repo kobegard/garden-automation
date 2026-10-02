@@ -8,6 +8,7 @@ replacing the old copies.
 |---|---|
 | `System_Overview.md` | Corrections pass 2026-10-01: Board 01 MCU, rails and sockets; outlines from the Gerbers; Board 04 MLX90632; Board 05 F1 fixed; fuse ratings; firmware status. JLCPCB pricing **not** re-run. |
 | `boards/01_reservoir_sensor_hub.md` | **Rewritten** from the 09-19 CAD. The old copy described the abandoned ESP32-DevKitC board. New: H1 cable re-pin and DS18B20 wiring findings. |
+| `BOM_and_cart_audit_2026-10-02.md` | Cart vs current designs (Boards 01 and 05 must be re-uploaded), Extended-part counts, verified swaps. |
 | `boards/06_light_controller.md` | Corrections 2026-10-01: suspected C1 dimming problem with a bench test, firmware now committed, D2 (BAT54S) description fixed. |
 
 Every change is marked inline with "corrected/added 2026-10-01" and the old
